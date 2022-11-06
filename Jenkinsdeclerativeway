@@ -1,73 +1,90 @@
 pipeline{
-                                                 
-agent any;
 
-tools{
+        agent any
+       
+        options {
+          timestamps()
+          buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '5', daysToKeepStr: '', numToKeepStr: '5')
+        } 
+        
+        triggers {
+         pollSCM '* * * * * '
+        }
 
-maven 'maven3.6.3'
+        tools{
+        maven 'maven3.8.6'
+        }
+        //This stage will get the Source from the Github 
+        stages{
+        stage('CheckOutCode'){
+        steps{
+             git branch: 'development', credentialsId: '5036410c-c783-46fb-bd7f-3c51f0d4f243', url: 'https://github.com/BishalP66/maven-web-application.git'
+        }
+        }
+        //This stage will do the build 
+        stage('Build'){
+        steps{
+        sh "mvn clean package"
+        }
+        }
+        //This stage will be execute SonarQube Report 
+        stage('ExecuteSonarQubeReport'){
+        steps{
+        sh "mvn clean sonar:sonar"
+        }
+        }
+        //This stage will Upload the Artifctas into Nexus Repos
+        stage('UploadArtifactIntoArtifactoryRepo'){
+        steps{
+        sh "mvn clean deploy"
+        }
+        }
+        //Deploy Application Into Tomcat Server
+        stage('DeployAppIntoTomcatServer'){
+        steps{sshagent(['6b9337c1-fcf0-4a49-81bc-4bc528f106ce']){
+        sh "scp -o StrictHostKeyChecking=no target/maven-web-application.war ec2-user@172.31.0.160:/opt/apache-tomcat-9.0.65/webapps/"
+        }
+        }
+        }
+         
+}//stages closing
 
+        post {
+         success {
+          slackNotifications(currentBuild.result)
+        }
+         failure {
+          slackNotifications(currentBuild.result)
+        }
+        }
+
+}//pipeline closing
+
+//Code Snippet for sending slack notifications.
+
+def slackNotifications(String buildStatus = 'STARTED') {
+  // build status of null means successful
+  buildStatus =  buildStatus ?: 'SUCCESSFUL'
+
+  // Default values
+  def colorName = 'RED'
+  def colorCode = '#FF0000'
+  def subject = "${buildStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+  def summary = "${subject} (${env.BUILD_URL})"
+
+  // Override default values based on build status
+  if (buildStatus == 'STARTED') {
+    colorName = 'YELLOW'
+    colorCode = '#FFFF00'
+  } else if (buildStatus == 'SUCCESS') {
+    colorName = 'GREEN'
+    colorCode = '#00FF00'
+  } else {
+    color = 'RED'
+    colorCode = '#FF0000'
+  }
+
+  // Send notifications
+  slackSend (color: colorCode, message: summary, channel: "#high")
 }
-
-options{
-timestamps()
-
-}
-
-stages{
-
-    stage('CheckOutCode'){
-	 steps{
-	   git branch: 'development', credentialsId: '347c3760-8e63-4289-9fe9-0a03f8442491', url: 'https://github.com/MithunTechnologiesDevOps/maven-web-application.git'
-	 }
-	}
-	
-	stage('Build'){
-	  steps{
-	  sh "mvn clean package"
-	  }
-	}
-  /*
-  stage('ExecuteSonarQubeReport'){
-	steps{
-	sh "mvn sonar:sonar"
-	}
-	}
-	
-	stage('UploadArtifactsIntoNexus'){
-	steps{
-	sh "mvn deploy"
-	}
-	}
-	
-	stage('DeployAppIntoTomcatServer'){
-	steps{
-	sshagent(['a2b944b0-d466-4676-8997-3658e2ab4fca']) {
-	 sh "scp -o StrictHostKeyChecking=no target/maven-web-application.war ec2-user@13.213.0.19:/opt/apache-tomcat-9.0.41/webapps/"
-	}
-	}
-	}
-	*/
-}
-
-	post{
-
-	  success{
-	    mail body: '''Build Over!.. Success
-
-Regards,
-Mithun Technologies,
-9980923226''', subject: 'Build Over...Successfull', to: 'devopstrainingblr@gmail.com'
-	  }
-	  
-	  failure{
-	     
-	  	    mail body: '''Build Over!.. Failed
-
-	  Regards,
-	  Mithun Technologies,
-	  9980923226''', subject: 'Build Over...Failed', to: 'devopstrainingblr@gmail.com'
-	  }
-	  
-	  
-	}
-}
+Footer
